@@ -1,5 +1,5 @@
 
-*Lakkavokka* is a JOSM plugin for digitizing indexed color
+**Lakkavokka** is a JOSM plugin for digitizing indexed color
 images in a controlled manner. This tool is useful for semi-automated imports in
 ML/AI mapping pipelines.
 
