@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 ################################################################################
 # Copyright (c) 2021 Miroff
 #
@@ -22,12 +20,6 @@
 # SOFTWARE.
 ################################################################################
 
-import sys
-import requests
-from os.path import join, exists
-from optparse import OptionParser
-
-from PIL import Image
 from shapely.geometry import Point, LineString, box
 from shapely.ops import transform, linemerge
 
@@ -36,9 +28,11 @@ import numpy as np
 import cv2 as cv
 import scipy.interpolate as si
 
-from global_mercator import GlobalMercator
-
 from bs4 import Tag
+
+from lakkavokka.global_mercator import GlobalMercator
+
+tile_size = 256
 
 """
 Remove self-intersections from the LineString
@@ -106,32 +100,6 @@ def generateTilesPatch(zoom:int, x:int, y:int, offset:int):
 
     return rows
 
-
-def loadFromDisk(zoom, x, y, base_path):
-    tile_file = base_path \
-                .replace('{zoom}', str(zoom)) \
-                .replace('{x}', str(x)) \
-                .replace('{y}', str(y))
-
-    if not exists(tile_file):
-        return None
-
-    pil_img = Image.open(tile_file)
-    return np.array(pil_img)
-
-
-def downloadTile(zoom, x, y, base_url):
-    tile_url = base_url \
-                .replace('{zoom}', str(zoom)) \
-                .replace('{x}', str(x)) \
-                .replace('{y}', str(y))
-
-    response = requests.get(tile_url, stream=True)
-
-    pil_img = Image.open(response.raw)
-    return np.array(pil_img)
-
-
 def load_mask(zoom, x, y, offset, loadFunc):
     tiles = generateTilesPatch(zoom, x, y, offset)
 
@@ -155,13 +123,12 @@ def rgb2mask(rgb):
     mask = np.zeros((width, height), dtype=np.uint8)
 
     for index, color in enumerate(colors):
-        #rgb = ImageColor.getcolor(color, "RGB")
         feature_mask = np.where(np.all(rgb == color, axis = 2))
         mask[feature_mask] = index
 
     return mask
 
-def translate_line_string(container, id, ls, proj, offset_x, offset_y, width, height, tags):
+def translate_line_string(zoom, container, id, ls, proj, offset_x, offset_y, width, height, tags):
     cache = {}
     nodes = []
     for px, py in ls.coords:
@@ -203,8 +170,10 @@ def translate_line_string(container, id, ls, proj, offset_x, offset_y, width, he
     container.append(way)
     return id
 
-def find_single_contour(zoom, x, y, click_x, click_y, offset, loadFunc, simplify_tolerance_factor=0, tags={}):
-    rgb = load_mask(zoom, x, y, offset, loadFunc)
+def find_single_contour(zoom, tx, ty, click_x, click_y, offset, loadFunc, simplify_tolerance_factor=0, tags={}):
+    proj = GlobalMercator()
+
+    rgb = load_mask(zoom, tx, (2**zoom - 1) - ty, offset, loadFunc)
 
     mask = rgb2mask(rgb[:,:,0:3])
 
@@ -256,7 +225,7 @@ def find_single_contour(zoom, x, y, click_x, click_y, offset, loadFunc, simplify
         if simplify_tolerance_factor:
             ls = ls.simplify(simplify_tolerance_factor)
 
-        id = translate_line_string(osm, id, ls, proj, tile_size * (tx - offset), tile_size * (ty - offset), mask.shape[0] - 1, mask.shape[1] - 1, tags)
+        id = translate_line_string(zoom, osm, id, ls, proj, tile_size * (tx - offset), tile_size * (ty - offset), mask.shape[0] - 1, mask.shape[1] - 1, tags)
         break
     return osm
 
@@ -268,70 +237,3 @@ def prepare_tags(tags):
         k, v = pair.split("=")
         result[k.strip()] = v.strip()
     return result
-
-def get_args():
-    usage = "usage: %prog [options] --lat <latitude> --lon <longitude>"
-    parser = OptionParser(usage=usage)
-
-    parser.add_option('-b', '--buffer', dest='buffer',
-                      default=1, type='int',
-                      help='Buffer size arout the click point in tile. --b 1 means that 3x3 tile block will be analyzed')
-
-    parser.add_option('-z', '--zoom', dest='zoom',
-                      default=16, type='int',
-                      help="Pretrained model zoom level")
-
-    parser.add_option('-s', '--simplify-factor', dest='simplify_tolerance_factor',
-                      default=2, type='float',
-                      help="Pretrained model zoom level")
-
-    parser.add_option('-t', '--tags', dest='tags',
-                      default='', type='str',
-                      help="Comma-separated list of tags for the new objects")
-
-    parser.add_option('--source', dest='source',
-                      default='http://localhost:9000/{zoom}/{x}/{y}.png', type='str',
-                      help="TMS tiles source. Can be either an URL of a path. See README about variable substitution")
-
-    parser.add_option('--lat', dest='lat',
-                      type='float',
-                      help="Latitude in decimal form (48.1234)")
-
-    parser.add_option('--lon', dest='lon',
-                      type='float',
-                      help="Longituse in decimal form (35.1234)")
-
-    (options, args) = parser.parse_args()
-
-    if not options.lat or not options.lon:
-        parser.print_usage()
-        print('--lat and --lon options are required')
-        exit(-1)
-
-    return options
-
-if __name__ == "__main__":
-    args = get_args()
-
-    zoom = args.zoom
-    offset = args.buffer
-    tile_size = 256
-
-
-    tags = prepare_tags(args.tags)
-
-    proj = GlobalMercator()
-    mx, my = proj.LatLonToMeters(args.lat, args.lon)
-    tx, ty = proj.MetersToTile(mx, my, zoom)
-    px, py = proj.MetersToPixels(mx, my, zoom)
-    click_x, click_y = int(px - tile_size * (tx - offset)), int(py - tile_size * (ty - offset))
-    click_y = tile_size * (2 * offset + 1) - click_y
-
-    if '://' in args.source:
-        loadFunc = lambda zoom, x, y: downloadTile(zoom, x, y, args.source)
-    else:
-        loadFunc = lambda zoom, x, y: loadFromDisk(zoom, x, y, args.source)
-
-    osm = find_single_contour(zoom, tx, (2**zoom - 1) - ty, click_x, click_y, offset, loadFunc, args.simplify_tolerance_factor, tags)
-
-    print(osm.prettify())
