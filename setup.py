@@ -1,15 +1,21 @@
 from setuptools import setup
 
+with open("README.md", "r", encoding="utf-8") as fh:
+    long_description = fh.read()
+
 setup(
     name='lakkavokka',
-    version='1.0.0',
+    version='0.1.0',
     description='Command-line JOSM plugin for digitizing indexed colors images',
+    long_description=long_description,
+    long_description_content_type="text/markdown",
     url='https://github.com/Aneurosm/lakkavokka',
     author='Miroff',
     author_email='mr.miroff@gmail.com',
     license='MIT',
     packages=['lakkavokka'],
     scripts=['bin/lakkavokka'],
+    python_requires=">=3.8",
     install_requires=[
         'shapely',
         'opencv-python',
