@@ -60,4 +60,17 @@ semi-automated load of data.
 `--lat` and `--lon` latitude and longitude of a clicked point
 
 `--zoom` zoom of tiles will be processed. It may be different from
-the zoom level in JOSM but it should always match the best zoom of tiles. 
+the zoom level in JOSM but it should always match the best zoom of tiles.
+
+Example workflow
+----------------
+
+1. Download data/8323903.tar.gz from this repository. This file contains
+forest overlay for a random rural area in Bashkortostan republic, Russia.
+2. Extract this file somewhere
+3. Enter the 8323903 directory and run `python3 -m http.server 9000` you
+could skip this step and point `--source` parameter to the directory itself,
+but it is more convenient to be able to see the data in JOSM
+4. Open JOSM and add image layer, type TMS, URL `tms[16,16]:http://localhost:9000/{z}/{x}/{y}.png`
+5. Download area around `https://www.openstreetmap.org/#map=14/52.3410/57.8839` in JOSM and enable recently added layer
+6. Setup lakkavokka as described earlier. If you're using http.server you can omit `--source` parameter.
